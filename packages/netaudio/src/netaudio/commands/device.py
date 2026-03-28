@@ -10,10 +10,10 @@ import typer
 
 logger = logging.getLogger("netaudio")
 
-from netaudio.dante.const import BLUETOOTH_MODEL_IDS, HEARTBEAT_LOCK_UNRELIABLE_MODEL_IDS
-from netaudio.dante.device_commands import DanteDeviceCommands
-from netaudio.dante.device_operations import _device_lock_operation, LOCK_OPERATION_LOCK, LOCK_OPERATION_UNLOCK, validate_dante_name, validate_pin
-from netaudio.dante.device_serializer import DanteDeviceSerializer
+from netaudio_lib.dante.const import BLUETOOTH_MODEL_IDS
+from netaudio_lib.dante.device_commands import DanteDeviceCommands
+from netaudio_lib.dante.device_operations import _device_lock_operation, LOCK_OPERATION_LOCK, LOCK_OPERATION_UNLOCK, validate_dante_name, validate_pin
+from netaudio_lib.dante.device_serializer import DanteDeviceSerializer
 
 from netaudio._common import (
     _command_context,
@@ -82,51 +82,13 @@ def _channel_matches(channel_key: int, channel_name: str, patterns: list[str]) -
 
 
 
-async def _lock_via_relay(pin: str, action: str) -> dict | None:
-    from netaudio.common.app_config import settings as app_settings
-    relay_port = getattr(app_settings, "relay_port", 9000) or 9000
-
-    import json
-    from netaudio.cli import state
-    device_name = None
-    if state.names:
-        device_name = state.names[0]
-    elif state.hosts:
-        device_name = state.hosts[0]
-
-    if not device_name:
-        devices = await _discover()
-        filtered = filter_devices(devices)
-        _, device = _resolve_one(filtered)
-        device_name = device.name or device.server_name
-
-    body = json.dumps({"device": device_name, "pin": pin}).encode()
-    path = f"/{action}"
-
-    try:
-        reader, writer = await asyncio.open_connection("127.0.0.1", relay_port)
-        request = f"POST {path} HTTP/1.0\r\nContent-Length: {len(body)}\r\n\r\n".encode() + body
-        writer.write(request)
-        await writer.drain()
-        response = await asyncio.wait_for(reader.read(4096), timeout=5.0)
-        writer.close()
-        await writer.wait_closed()
-        response_str = response.decode("utf-8", errors="replace")
-        body_start = response_str.find("\r\n\r\n")
-        if body_start >= 0:
-            return json.loads(response_str[body_start + 4:])
-    except (ConnectionRefusedError, OSError):
-        pass
-    return None
-
-
 def _get_lock_key() -> bytes:
-    from netaudio.common.app_config import settings as app_settings
+    from netaudio_lib.common.app_config import settings as app_settings
 
     if app_settings.device_lock_key:
         return app_settings.device_lock_key
 
-    from netaudio.common.config_loader import config_search_paths, load_capture_profile
+    from netaudio_lib.common.config_loader import config_search_paths, load_capture_profile
     profile_cfg, _ = load_capture_profile(None, None)
     lock_key_value = profile_cfg.get("device_lock_key")
     if lock_key_value:
@@ -134,7 +96,7 @@ def _get_lock_key() -> bytes:
         app_settings.device_lock_key = key
         return key
 
-    from netaudio.common.key_extract import extract_lock_key, find_dante_controller_binary
+    from netaudio_lib.common.key_extract import extract_lock_key, find_dante_controller_binary
     binary_path = find_dante_controller_binary()
     if binary_path:
         typer.echo(f"Dante Controller found: {binary_path}", err=True)
@@ -164,15 +126,11 @@ def _get_lock_key() -> bytes:
 
 
 @app.command("list")
-def device_list(
-    json_flag: bool = typer.Option(False, "-j", "--json", help="Shorthand for --output=json."),
-):
+def device_list():
     """List discovered Dante devices."""
 
     async def _run():
-        from netaudio.cli import OutputFormat, state
-        if json_flag:
-            state.output_format = OutputFormat.json
+        from netaudio.cli import state
 
         devices = await _discover()
         await _populate_controls(devices)
@@ -295,11 +253,12 @@ def reboot():
         devices = await _discover()
         await _populate_controls(devices)
         filtered = filter_devices(devices)
-        if not filtered:
-            typer.echo("Error: no devices matched.", err=True)
+        _, device = _resolve_one(filtered)
+        if not hasattr(device.commands, "command_reboot"):
+            typer.echo("Error: reboot is not available in this build.", err=True)
             raise typer.Exit(code=1)
-        for server_name, device in filtered.items():
-            await device.operations.reboot()
+        await device.operations.reboot()
+        typer.echo(f"{icon('reboot')}Rebooting: {device.name}")
 
     asyncio.run(_run())
 
@@ -334,16 +293,9 @@ app.add_typer(lock_app, name="lock")
 def lock_set(
     pin: str = typer.Argument(..., help="4-digit numeric PIN to lock the device with."),
 ):
-    async def _run():
-        result = await _lock_via_relay(pin, "lock")
-        if result is not None:
-            if result.get("already"):
-                typer.echo("already locked", err=True)
-            elif not result.get("success"):
-                typer.echo(f"Error: lock failed: {result.get('error', 'unknown')}", err=True)
-                raise typer.Exit(code=1)
-            return
+    """Lock a device with a PIN."""
 
+    async def _run():
         lock_key = _get_lock_key()
 
         error = validate_pin(pin)
@@ -368,16 +320,9 @@ def lock_set(
 def lock_clear(
     pin: str = typer.Argument(..., help="4-digit numeric PIN to unlock the device."),
 ):
-    async def _run():
-        result = await _lock_via_relay(pin, "unlock")
-        if result is not None:
-            if result.get("already"):
-                typer.echo("already unlocked", err=True)
-            elif not result.get("success"):
-                typer.echo(f"Error: unlock failed: {result.get('error', 'unknown')}", err=True)
-                raise typer.Exit(code=1)
-            return
+    """Unlock a device with its PIN."""
 
+    async def _run():
         lock_key = _get_lock_key()
 
         error = validate_pin(pin)
@@ -403,13 +348,11 @@ def lock_status():
     """Show device lock status."""
 
     async def _run():
-        from netaudio.dante.services.heartbeat import _parse_lock_state
+        from netaudio_lib.dante.services.heartbeat import _parse_lock_state
         import socket
         import struct
-        import time
 
-        from netaudio.common.app_config import settings as app_settings
-        from netaudio.dante.const import DEVICE_HEARTBEAT_PORT, MULTICAST_GROUP_HEARTBEAT
+        from netaudio_lib.dante.const import DEVICE_HEARTBEAT_PORT, MULTICAST_GROUP_HEARTBEAT
 
         devices = await _discover()
         filtered = filter_devices(devices)
@@ -420,8 +363,7 @@ def lock_status():
 
         device_ips = {}
         for server_name, device in filtered.items():
-            if device.ipv4 and device.online:
-                device_ips[str(device.ipv4)] = (server_name, device)
+            device_ips[str(device.ipv4)] = (server_name, device)
 
         multicast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         multicast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -434,12 +376,11 @@ def lock_status():
             socket.inet_aton("0.0.0.0"),
         )
         multicast_socket.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
-        multicast_socket.settimeout(0.5)
+        multicast_socket.settimeout(3)
 
-        deadline = time.monotonic() + app_settings.lock_state_timeout
         seen = set()
         try:
-            while len(seen) < len(device_ips) and time.monotonic() < deadline:
+            while len(seen) < len(device_ips):
                 try:
                     data, addr = multicast_socket.recvfrom(4096)
                 except TimeoutError:
@@ -448,9 +389,8 @@ def lock_status():
                 if source_ip in device_ips and source_ip not in seen:
                     seen.add(source_ip)
                     server_name, device = device_ips[source_ip]
-                    if getattr(device, "model_id", None) not in HEARTBEAT_LOCK_UNRELIABLE_MODEL_IDS:
-                        lock_state = _parse_lock_state(data)
-                        device.is_locked = lock_state if lock_state is not None else False
+                    lock_state = _parse_lock_state(data)
+                    device.is_locked = lock_state if lock_state is not None else False
         finally:
             multicast_socket.close()
 
@@ -487,13 +427,12 @@ def lock_status():
 def _collect_lock_state(devices: dict) -> None:
     import socket
     import struct
-    import time
-    from netaudio.dante.const import DEVICE_HEARTBEAT_PORT, MULTICAST_GROUP_HEARTBEAT
-    from netaudio.dante.services.heartbeat import _parse_lock_state
+    from netaudio_lib.dante.const import DEVICE_HEARTBEAT_PORT, MULTICAST_GROUP_HEARTBEAT
+    from netaudio_lib.dante.services.heartbeat import _parse_lock_state
 
     device_ips = {}
     for server_name, device in devices.items():
-        if device.ipv4 and device.online:
+        if device.ipv4:
             device_ips[str(device.ipv4)] = device
 
     if not device_ips:
@@ -510,13 +449,11 @@ def _collect_lock_state(devices: dict) -> None:
         socket.inet_aton("0.0.0.0"),
     )
     multicast_socket.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
-    multicast_socket.settimeout(0.5)
+    multicast_socket.settimeout(2)
 
-    from netaudio.common.app_config import settings as app_settings
-    deadline = time.monotonic() + app_settings.lock_state_timeout
     seen = set()
     try:
-        while len(seen) < len(device_ips) and time.monotonic() < deadline:
+        while len(seen) < len(device_ips):
             try:
                 data, addr = multicast_socket.recvfrom(4096)
             except TimeoutError:
@@ -525,8 +462,6 @@ def _collect_lock_state(devices: dict) -> None:
             if source_ip in device_ips and source_ip not in seen:
                 seen.add(source_ip)
                 device = device_ips[source_ip]
-                if getattr(device, "model_id", None) in HEARTBEAT_LOCK_UNRELIABLE_MODEL_IDS:
-                    continue
                 lock_state = _parse_lock_state(data)
                 if lock_state is not None:
                     device.is_locked = lock_state
@@ -651,9 +586,6 @@ def clock():
     asyncio.run(_run())
 
 
-from netaudio.commands.flow import app as flow_app
-app.add_typer(flow_app, name="flow")
-
 meter_app = typer.Typer(help="Device metering.", no_args_is_help=False, invoke_without_command=True)
 app.add_typer(meter_app, name="meter")
 
@@ -764,7 +696,7 @@ def meter_callback(
     no_color = cli_state.no_color
 
     async def _run():
-        from netaudio.daemon.client import (
+        from netaudio_lib.daemon.client import (
             get_devices_from_daemon,
             meter_snapshot_from_daemon,
             meter_start_on_daemon,
@@ -861,7 +793,7 @@ def meter_callback(
 @meter_app.command()
 def start():
     """Start persistent metering (requires daemon)."""
-    from netaudio.daemon.client import meter_start_on_daemon
+    from netaudio_lib.daemon.client import meter_start_on_daemon
 
     async def _run():
         devices = await _discover()
@@ -879,7 +811,7 @@ def start():
 @meter_app.command()
 def stop():
     """Stop persistent metering (requires daemon)."""
-    from netaudio.daemon.client import meter_stop_on_daemon
+    from netaudio_lib.daemon.client import meter_stop_on_daemon
 
     async def _run():
         devices = await _discover()
@@ -903,9 +835,9 @@ def measure_timeout(
     import socket
     import struct
 
-    from netaudio.common.app_config import settings as app_settings
-    from netaudio.dante.const import MULTICAST_GROUP_CONTROL_MONITORING
-    from netaudio.dante.application import DanteApplication
+    from netaudio_lib.common.app_config import settings as app_settings
+    from netaudio_lib.dante.const import MULTICAST_GROUP_CONTROL_MONITORING
+    from netaudio_lib.dante.application import DanteApplication
 
     async def _run():
         application = DanteApplication()
@@ -1044,7 +976,7 @@ def measure_timeout(
 @meter_app.command()
 def status():
     """Show which devices have persistent metering active."""
-    from netaudio.daemon.client import meter_status_from_daemon
+    from netaudio_lib.daemon.client import meter_status_from_daemon
 
     async def _run():
         result = await meter_status_from_daemon()

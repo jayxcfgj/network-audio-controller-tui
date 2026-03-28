@@ -19,14 +19,14 @@ from typing import Optional
 
 import typer
 
-from netaudio.common.app_config import settings as app_settings
-from netaudio.common.app_config import get_available_interfaces
-from netaudio.dante.const import (
+from netaudio_lib.common.app_config import settings as app_settings
+from netaudio_lib.common.app_config import get_available_interfaces
+from netaudio_lib.dante.const import (
     DEVICE_INFO_PORT,
     MULTICAST_GROUP_CONTROL_MONITORING,
 )
-from netaudio.dante.packet_store import DEFAULT_DB_PATH, PacketStore
-from netaudio.dante.tshark_capture import TsharkCapture
+from netaudio_lib.dante.packet_store import DEFAULT_DB_PATH, PacketStore
+from netaudio_lib.dante.tshark_capture import TsharkCapture
 
 try:
     import tomllib
@@ -158,7 +158,7 @@ def _load_fact_labels() -> dict[str, str]:
 
     _FACT_LABEL_CACHE = {}
     try:
-        from netaudio.dante.fact_store import DEFAULT_FACTS_PATH, list_facts
+        from netaudio_lib.dante.fact_store import DEFAULT_FACTS_PATH, list_facts
         if DEFAULT_FACTS_PATH.exists():
             for fact in list_facts(DEFAULT_FACTS_PATH):
                 category = fact["category"]
@@ -180,7 +180,7 @@ def _label_packet(payload: bytes):
     if len(payload) < 8:
         return ""
 
-    from netaudio.dante.debug_formatter import (
+    from netaudio_lib.dante.debug_formatter import (
         PROTOCOL_NAMES,
         get_opcode_name,
         get_settings_message_type_name,
@@ -414,13 +414,13 @@ def _parse_config_bool(value, field_name: str) -> bool | None:
 
 
 def _default_capture_config_path() -> Path:
-    from netaudio.common.config_loader import default_config_path
+    from netaudio_lib.common.config_loader import default_config_path
 
     return default_config_path()
 
 
 def _load_capture_profile(config: str | None, profile: str | None) -> tuple[dict, Path]:
-    from netaudio.common.config_loader import load_capture_profile
+    from netaudio_lib.common.config_loader import load_capture_profile
 
     try:
         return load_capture_profile(config, profile)
@@ -429,7 +429,7 @@ def _load_capture_profile(config: str | None, profile: str | None) -> tuple[dict
 
 
 def _resolve_db_from_config(db: str | None, profile_cfg: dict) -> str:
-    from netaudio.common.config_loader import resolve_db_from_config
+    from netaudio_lib.common.config_loader import resolve_db_from_config
 
     return resolve_db_from_config(db, profile_cfg)
 
@@ -602,7 +602,6 @@ class CaptureDaemon:
         dump: bool = False,
         dissect: bool = False,
         metering: bool = False,
-        tcp: bool = False,
         session_id: int | None = None,
         session_name: str | None = None,
         redis_host: str | None = None,
@@ -618,7 +617,6 @@ class CaptureDaemon:
         self.dump = dump
         self.dissect = dissect
         self.metering = metering
-        self.tcp = tcp
         self.use_tshark = use_tshark
         self.use_multicast = use_multicast
         self.device_filter = device_filter or []
@@ -832,7 +830,6 @@ class CaptureDaemon:
             device_ips=tshark_filter_ips,
             known_device_ips=set(self.device_filter) if self.device_filter else None,
             include_metering=self.metering,
-            include_tcp=self.tcp,
             session_id=self.session_id,
         )
 
@@ -1314,7 +1311,7 @@ def _print_packet_line(
     )
 
     if dissect_mode:
-        from netaudio.dante.packet_dissector import dissect_and_render
+        from netaudio_lib.dante.packet_dissector import dissect_and_render
         print(dissect_and_render(payload))
     elif dump:
         print(_hexdump(payload))
@@ -1361,7 +1358,6 @@ def live(
     show: bool = typer.Option(True, "--live/--no-live", help="Show live packet feed."),
     dump: bool = typer.Option(False, "--dump", help="Dump packet payloads as hex + ASCII."),
     metering: bool = typer.Option(False, "--metering", help="Include metering traffic (port 8751)."),
-    tcp: bool = typer.Option(False, "--tcp", help="Include TCP traffic to/from devices."),
     session_id: Optional[int] = typer.Option(
         None, "--session-id", help="Attach packets to an existing capture session ID."
     ),
@@ -1447,7 +1443,6 @@ def live(
         dump=dump,
         dissect=cli_state.dissect,
         metering=metering,
-        tcp=tcp,
         session_id=session_id,
         session_name=session_name,
         redis_host=resolved_redis_host,
@@ -1571,7 +1566,7 @@ def session_stop(
             raise typer.Exit(1)
         print(f"{icon('session')}Capture: Ended session #{resolved_session_id}")
 
-        from netaudio.dante.protocol_verifier import export_session_bundle
+        from netaudio_lib.dante.protocol_verifier import export_session_bundle
 
         session_row = store.get_session(resolved_session_id)
         session_name = session_row["name"] if session_row else f"session_{resolved_session_id}"
@@ -1647,7 +1642,7 @@ def session_rename(
 
 
 def _print_session_evidence(store: PacketStore, sessions: list, has_evidence: bool, no_evidence: bool):
-    from netaudio.dante.packet_dissector import dissect_and_render
+    from netaudio_lib.dante.packet_dissector import dissect_and_render
 
     for session in sessions:
         session_id = int(session["id"])
@@ -1861,7 +1856,7 @@ def _print_marker_row(
             print(f"{evidence_indent}  {pkt_dir_icon}#{pid} {pkt_dir:8s} {opcode_hex}{src} -> {dst} {len(payload)}B")
 
             if use_dissect:
-                from netaudio.dante.packet_dissector import dissect_and_render
+                from netaudio_lib.dante.packet_dissector import dissect_and_render
                 print(dissect_and_render(payload, indent=evidence_indent + "  "))
             else:
                 print(_hexdump(payload, indent=evidence_indent + "  "))
@@ -3002,28 +2997,9 @@ def packet_show(
                 print(f"  Payload:")
                 print(_hexdump(payload, indent="    "))
             else:
-                from netaudio.dante.packet_dissector import dissect_and_render
+                from netaudio_lib.dante.packet_dissector import dissect_and_render
                 print(dissect_and_render(payload, indent="  "))
 
             print()
     finally:
         store.close()
-
-
-@app.command("clear")
-def clear(
-    db: Optional[str] = typer.Option(None, "--db", help="SQLite database path."),
-    config: Optional[str] = typer.Option(None, "--config", help="Capture config TOML path."),
-    profile: Optional[str] = typer.Option(None, "--profile", help="Capture config profile name."),
-):
-    """Delete the capture database."""
-    profile_cfg, _ = _load_capture_profile(config, profile)
-    resolved_db = _resolve_db_from_config(db, profile_cfg)
-    db_path = Path(resolved_db)
-
-    for suffix in ("", "-shm", "-wal"):
-        target = Path(str(db_path) + suffix)
-        if target.exists():
-            target.unlink()
-
-    print(f"Deleted {db_path}", file=sys.stderr)

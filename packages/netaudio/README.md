@@ -1,72 +1,58 @@
-
 ### Description
 
-This is a python program for controlling Dante network audio devices (and
-possibly others in the future).  It's early, so expect things to break or
-switches to change.  Use this at your own risk; it's not ready for anything
-other than a test environment and could make the devices behave unexpectedly.
-The first goal is to do everything that Dante Controller can do that would be
-useful for control of the devices from a command-line interface or within
-scripts.
+`netaudio` is a Python CLI for controlling Audinate Dante network audio devices.
+This project now also ships a Textual-based TUI.
 
-For more information, check out the [gearspace discussion](https://gearspace.com/board/music-computers/1221989-dante-routing-without-dante-controller-possible.html).
-
-### Features
-
-#### Current
-
-- AVIO input/output gain control
-- Add/remove subscriptions
-- CLI
-- Display active subscriptions, Rx and Tx channels, devices names and
-  addresses, subscription status
-- JSON output
-- Set device latency, sample rate, encoding
-- Set/reset channel names, device names
-- mDNS device discovery
+Use in test environments first. Device settings and routing changes can affect live audio.
 
 ### Installation
 
-To install from PyPI:
-
-```bash
-uv tool install netaudio
-```
-
-Or with pip/pipx:
+Install from package index:
 
 ```bash
 pip install netaudio
 ```
 
-To install from a clone:
+Or from a clone/workspace:
 
 ```bash
 uv sync
-uv run netaudio
 ```
-
-#### Arch Linux
-
-To install from AUR, build the package with
-[aur/python-netaudio](https://aur.archlinux.org/packages/python-netaudio).
 
 ### Usage
 
-Run `netaudio` if installed globally, or `uv run netaudio` from a clone.
-
-Run tests:
+CLI:
 
 ```bash
-uv run pytest
+netaudio --help
 ```
 
-Lint and format:
+TUI:
 
 ```bash
-uv run ruff check .
-uv run ruff format .
+netaudio-tui
 ```
+
+From a clone with uv:
+
+```bash
+uv run netaudio
+uv run netaudio-tui
+```
+
+### Quick Start (venv)
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install netaudio
+netaudio-tui
+```
+
+### Notes
+
+- TUI version label is managed separately from CLI command output.
+- Some UI areas are intentionally marked as mockup if upstream CLI support is missing.
 
 ### Documentation
 

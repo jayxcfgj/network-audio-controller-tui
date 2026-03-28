@@ -23,8 +23,8 @@ SESSION_SELECTORS = {"active", "latest"}
 
 
 def _resolve_evidence_sessions(evidence_refs: list[str]) -> list[str]:
-    from netaudio.common.config_loader import load_capture_profile, resolve_db_from_config
-    from netaudio.dante.packet_store import PacketStore
+    from netaudio_lib.common.config_loader import load_capture_profile, resolve_db_from_config
+    from netaudio_lib.dante.packet_store import PacketStore
 
     try:
         profile_config, _ = load_capture_profile(None, None)
@@ -62,8 +62,8 @@ def _resolve_evidence_sessions(evidence_refs: list[str]) -> list[str]:
 
 
 def _create_evidence_markers(evidence_refs: list[str], category: str, key: str, name: str):
-    from netaudio.common.config_loader import load_capture_profile, resolve_db_from_config
-    from netaudio.dante.packet_store import PacketStore
+    from netaudio_lib.common.config_loader import load_capture_profile, resolve_db_from_config
+    from netaudio_lib.dante.packet_store import PacketStore
 
     try:
         profile_config, _ = load_capture_profile(None, None)
@@ -131,7 +131,7 @@ def fact_add(
     protocol: Optional[str] = typer.Option(None, "--protocol", help="Protocol ID this fact applies to (e.g. 0xFFFF, 0x2729). Enables auto-dissection."),
     match: Optional[str] = typer.Option(None, "--match", help="Payload offset:size where the key value is found (e.g. 6:2). Enables auto-dissection."),
 ):
-    from netaudio.dante.fact_store import add_fact
+    from netaudio_lib.dante.fact_store import add_fact
 
     facts_path = _resolve_facts_path()
     fields_parsed = [_parse_field_spec(f) for f in field] if field else []
@@ -204,102 +204,12 @@ def fact_add(
         print(f"  (updated existing fact, {len(fact['history'])} previous version(s))")
 
 
-@app.command("update")
-def fact_update(
-    category: str = typer.Option(..., "--category", "-c", help="Fact category."),
-    key: str = typer.Option(..., "--key", "-k", help="Fact key."),
-    name: Optional[str] = typer.Option(None, "--name", help="Update human-readable name."),
-    note: Optional[str] = typer.Option(None, "--note", help="Update note."),
-    body: Optional[str] = typer.Option(None, "--body", help="Update body content."),
-    body_file: Optional[str] = typer.Option(None, "--body-file", help="Read body from file (use - for stdin)."),
-    field: Optional[list[str]] = typer.Option(
-        None,
-        "--field",
-        help="Replace field definitions: name:offset:length:type[:expected_value]. Repeatable.",
-    ),
-    evidence: Optional[list[str]] = typer.Option(
-        None,
-        "--evidence",
-        "-e",
-        help="Add evidence reference: session_name:packet_id. Repeatable.",
-    ),
-    confidence: Optional[str] = typer.Option(None, "--confidence", help="Update confidence level: verified, observed, inferred, uncertain."),
-    supersedes: Optional[str] = typer.Option(None, "--supersedes", help="Fact key this replaces (category:key)."),
-    protocol: Optional[str] = typer.Option(None, "--protocol", help="Protocol ID (e.g. 0xFFFF, 0x2729)."),
-    match: Optional[str] = typer.Option(None, "--match", help="Payload offset:size for auto-dissection (e.g. 6:2)."),
-):
-    from netaudio.dante.fact_store import update_fact, get_confidence
-
-    facts_path = _resolve_facts_path()
-    fields_parsed = [_parse_field_spec(f) for f in field] if field else None
-
-    if evidence:
-        evidence = _resolve_evidence_sessions(evidence)
-
-    resolved_body = body
-    if body_file:
-        if body_file == "-":
-            resolved_body = sys.stdin.read()
-        else:
-            body_path = Path(body_file)
-            if not body_path.exists():
-                print(f"Capture: body file not found: {body_file}", file=sys.stderr)
-                raise typer.Exit(1)
-            resolved_body = body_path.read_text()
-
-    parsed_protocol_id = None
-    if protocol:
-        parts = [p.strip() for p in protocol.split(",")]
-        if len(parts) == 1:
-            parsed_protocol_id = int(parts[0], 0)
-        else:
-            parsed_protocol_id = [int(p, 0) for p in parts]
-
-    parsed_match_offset = None
-    parsed_match_size = None
-    if match:
-        match_parts = match.split(":")
-        parsed_match_offset = int(match_parts[0])
-        parsed_match_size = int(match_parts[1]) if len(match_parts) > 1 else 2
-
-    fact = update_fact(
-        path=facts_path,
-        category=category,
-        key=key,
-        name=name,
-        note=note,
-        body=resolved_body,
-        fields=fields_parsed,
-        evidence=evidence,
-        confidence=confidence,
-        supersedes=supersedes,
-        protocol_id=parsed_protocol_id,
-        match_offset=parsed_match_offset,
-        match_size=parsed_match_size,
-    )
-
-    if fact is None:
-        print(f"Fact not found: {category}:{key}", file=sys.stderr)
-        raise typer.Exit(1)
-
-    print(f"{icon('info')}Updated: {category}:{key} = {fact['name']}")
-    print(f"  Confidence: {get_confidence(fact)}")
-    if fact.get("note"):
-        print(f"  Note: {fact['note']}")
-    if evidence:
-        for ref in evidence:
-            print(f"  Evidence: {ref}")
-        _create_evidence_markers(evidence, category, key, fact["name"])
-    if "history" in fact:
-        print(f"  ({len(fact['history'])} revision(s))")
-
-
 @app.command("list")
 def fact_list(
     category: Optional[str] = typer.Option(None, "--category", "-c", help="Filter by category."),
 ):
     from netaudio.cli import state
-    from netaudio.dante.fact_store import list_facts, get_categories, get_confidence
+    from netaudio_lib.dante.fact_store import list_facts, get_categories
 
     facts_path = _resolve_facts_path()
 
@@ -328,12 +238,11 @@ def fact_list(
             current_category = fact["category"]
             print(f"[{current_category}]")
 
-        fact_confidence = get_confidence(fact)
-        confidence_marker = {"verified": "+", "observed": "○", "inferred": "~", "uncertain": "?", "disproved": "✗"}.get(
-            fact_confidence, " "
+        confidence_marker = {"verified": "+", "inferred": "~", "uncertain": "?", "disproved": "✗"}.get(
+            fact.get("confidence", ""), " "
         )
         suffix = ""
-        if fact_confidence == "disproved":
+        if fact.get("confidence") == "disproved":
             disprovals = fact.get("disprovals", [])
             if disprovals:
                 latest = disprovals[-1]
@@ -364,7 +273,7 @@ def fact_show(
     prove: bool = typer.Option(False, "--prove", "-p", help="Show full proof: load evidence bundles, dissect packets, verify fields."),
     provenance_dir: Optional[str] = typer.Option(None, "--provenance-dir", help="Path to provenance bundles directory."),
 ):
-    from netaudio.dante.fact_store import get_fact, get_confidence, _parse_evidence_ref, _find_bundle, _load_bundle, _verify_field
+    from netaudio_lib.dante.fact_store import get_fact, _parse_evidence_ref, _find_bundle, _load_bundle, _verify_field
 
     facts_path = _resolve_facts_path()
     fact = get_fact(facts_path, category, key)
@@ -375,7 +284,7 @@ def fact_show(
 
     print(f"{icon('info')}Fact: {fact['category']}:{fact['key']}")
     print(f"  Name:       {fact['name']}")
-    print(f"  Confidence: {get_confidence(fact)}")
+    print(f"  Confidence: {fact.get('confidence', 'unknown')}")
     if fact.get("note"):
         print(f"  Note:       {fact['note']}")
     if fact.get("supersedes"):
@@ -407,16 +316,6 @@ def fact_show(
             print(f"    {device}{f' ({resp_size}B response)' if resp_size else ''}: {reason}")
             for mismatch in disproval.get("field_mismatches", []):
                 print(f"      {mismatch.get('name', '?')}: {mismatch.get('error', '')}")
-
-    confidence_log = fact.get("confidence_log", [])
-    if len(confidence_log) > 1:
-        print(f"  Confidence log:")
-        for entry in confidence_log:
-            timestamp_ns = entry.get("timestamp_ns", 0)
-            timestamp_s = timestamp_ns / 1_000_000_000 if timestamp_ns else 0
-            from datetime import datetime
-            timestamp_str = datetime.fromtimestamp(timestamp_s).strftime("%Y-%m-%d %H:%M") if timestamp_s else "?"
-            print(f"    {timestamp_str}  {entry['level']}")
 
     if fact.get("history"):
         print(f"  History ({len(fact['history'])} revision(s)):")
@@ -478,7 +377,7 @@ def fact_show(
 
             print(f"      Size: {len(payload)}B")
             print(f"      Payload:")
-            from netaudio.dante.packet_dissector import dissect_and_render
+            from netaudio_lib.dante.packet_dissector import dissect_and_render
             print(dissect_and_render(payload, indent="        "))
 
             if fact.get("fields"):
@@ -501,7 +400,7 @@ def fact_check(
     prove: bool = typer.Option(False, "--prove", "-p", help="Show full proof: hexdump evidence packets and verify fields."),
     provenance_dir: Optional[str] = typer.Option(None, "--provenance-dir", help="Path to provenance bundles directory."),
 ):
-    from netaudio.dante.fact_store import check_facts, list_facts, get_fact, _parse_evidence_ref, _find_bundle, _load_bundle, _verify_field
+    from netaudio_lib.dante.fact_store import check_facts, list_facts, get_fact, _parse_evidence_ref, _find_bundle, _load_bundle, _verify_field
 
     facts_path = _resolve_facts_path()
 
@@ -538,7 +437,7 @@ def fact_check(
             status_icon = icon("fail")
             failed += 1
 
-        confidence_marker = {"verified": "+", "observed": "○", "inferred": "~", "uncertain": "?"}.get(
+        confidence_marker = {"verified": "+", "inferred": "~", "uncertain": "?"}.get(
             result.get("confidence", ""), " "
         )
         print(f"  {status_icon}[{status}] {confidence_marker} {result['fact_key']:30s} {result['name']}")
@@ -594,7 +493,7 @@ def fact_check(
                     print(f"\n         --- {ref} ---")
                     print(f"         Packet #{packet_id}  {direction}  opcode={opcode_str}  {len(payload)}B")
                     print(f"         {src} -> {dst}")
-                    from netaudio.dante.packet_dissector import dissect_and_render
+                    from netaudio_lib.dante.packet_dissector import dissect_and_render
                     print(dissect_and_render(payload, indent="           "))
 
                     if fact.get("fields"):
@@ -658,7 +557,7 @@ def fact_verify(
     config: Optional[str] = typer.Option(None, "--config", help="Capture config TOML path."),
     profile: Optional[str] = typer.Option(None, "--profile", help="Capture config profile name."),
 ):
-    from netaudio.dante.fact_store import (
+    from netaudio_lib.dante.fact_store import (
         list_facts,
         _parse_evidence_ref,
         _find_bundle,
@@ -782,8 +681,8 @@ async def _run_fact_verify(
     auto_disprove: bool = False,
 ):
     import struct
-    from netaudio.dante.fact_store import _verify_field, disprove_fact
-    from netaudio.dante.protocol_verifier import ProtocolVerifier
+    from netaudio_lib.dante.fact_store import _verify_field, disprove_fact
+    from netaudio_lib.dante.protocol_verifier import ProtocolVerifier
 
     async with ProtocolVerifier(
         device_ip=device_ip,
@@ -1003,7 +902,7 @@ def fact_spec(
     category: Optional[str] = typer.Option(None, "--category", "-c", help="Limit to one category."),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Write to file instead of stdout."),
 ):
-    from netaudio.dante.fact_store import list_facts, get_categories, get_confidence
+    from netaudio_lib.dante.fact_store import list_facts, get_categories
 
     facts_path = _resolve_facts_path()
 
@@ -1023,11 +922,12 @@ def fact_spec(
 
     all_facts = list_facts(facts_path)
 
-    publishable_facts = [f for f in all_facts if get_confidence(f) != "disproved"]
+    # Filter out disproved facts
+    publishable_facts = [f for f in all_facts if f.get("confidence") != "disproved"]
 
     confidence_counts = {"verified": 0, "observed": 0, "inferred": 0, "uncertain": 0}
     for fact in publishable_facts:
-        conf = get_confidence(fact)
+        conf = fact.get("confidence", "unknown")
         if conf in confidence_counts:
             confidence_counts[conf] += 1
 
@@ -1063,7 +963,7 @@ def fact_spec(
         lines.append("")
 
         for fact in category_facts:
-            confidence = get_confidence(fact)
+            confidence = fact.get("confidence", "unknown")
 
             lines.append(f"### {fact['key']} — {fact['name']}")
             lines.append("")
@@ -1107,7 +1007,7 @@ def fact_remove(
     category: str = typer.Option(..., "--category", "-c", help="Fact category."),
     key: str = typer.Option(..., "--key", "-k", help="Fact key."),
 ):
-    from netaudio.dante.fact_store import remove_fact
+    from netaudio_lib.dante.fact_store import remove_fact
 
     facts_path = _resolve_facts_path()
     removed = remove_fact(facts_path, category, key)
@@ -1126,7 +1026,7 @@ def fact_disprove(
     reason: str = typer.Option(..., "--reason", help="Why this fact is wrong."),
     device_ip: Optional[str] = typer.Option(None, "--device-ip", "-d", help="Device that disproved it."),
 ):
-    from netaudio.dante.fact_store import disprove_fact
+    from netaudio_lib.dante.fact_store import disprove_fact
 
     facts_path = _resolve_facts_path()
     result = disprove_fact(
@@ -1154,7 +1054,7 @@ def fact_reinstate(
     confidence: str = typer.Option("verified", "--confidence", help="New confidence level."),
     note: Optional[str] = typer.Option(None, "--note", help="Updated note."),
 ):
-    from netaudio.dante.fact_store import reinstate_fact
+    from netaudio_lib.dante.fact_store import reinstate_fact
 
     facts_path = _resolve_facts_path()
     result = reinstate_fact(

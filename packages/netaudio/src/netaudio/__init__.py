@@ -1,21 +1,6 @@
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = version("netaudio")
-
-from netaudio.dante.application import DanteApplication
-from netaudio.dante.browser import DanteBrowser
-from netaudio.dante.channel import DanteChannel
-from netaudio.dante.device import DanteDevice
-from netaudio.dante.events import DanteEvent, DanteEventDispatcher, EventType
-from netaudio.dante.subscription import DanteSubscription
-
-__all__ = [
-    "DanteApplication",
-    "DanteBrowser",
-    "DanteChannel",
-    "DanteDevice",
-    "DanteEvent",
-    "DanteEventDispatcher",
-    "EventType",
-    "DanteSubscription",
-]
+try:
+    __version__ = version("netaudio")
+except PackageNotFoundError:
+    __version__ = "0.1.4+local"

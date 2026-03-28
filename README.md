@@ -1,75 +1,121 @@
+## Network Audio Controller (CLI + TUI)
 
-### Description
+This repository provides:
 
-This is a python program for controlling Dante network audio devices (and
-possibly others in the future).  It's early, so expect things to break or
-switches to change.  Use this at your own risk; it's not ready for anything
-other than a test environment and could make the devices behave unexpectedly.
-The first goal is to do everything that Dante Controller can do that would be
-useful for control of the devices from a command-line interface or within
-scripts.
+- `netaudio` (CLI)
+- `netaudio-tui` (Textual TUI)
 
-For more information, check out the [gearspace discussion](https://gearspace.com/board/music-computers/1221989-dante-routing-without-dante-controller-possible.html).
+The TUI is focused on safe, operator-friendly Dante routing workflows and device inspection.
 
-### Features
+## TUI Preview
 
-#### Current
+> Screenshot is from an earlier build, but gives a solid first impression of the UI.
 
-- AVIO input/output gain control
-- Add/remove subscriptions
-- CLI
-- Display active subscriptions, Rx and Tx channels, devices names and
-  addresses, subscription status
-- JSON output
-- Set device latency, sample rate, encoding
-- Set/reset channel names, device names
-- mDNS device discovery
+![Network Audio TUI Screenshot](./release/assets/tui-screenshot-2026-02-28.png)
 
-### Installation
+## Current TUI Features
 
-To install from PyPI:
+### Routing Matrix
+
+- Routing matrix with single-click crosspoint actions
+- Subscription status visualization in the matrix
+- Non-blocking refresh pipeline with queued refresh handling
+- Scroll/cursor/focus preservation after refresh
+- Resizable matrix columns (`RX Channel`, `Status`)
+- Sticky TX device header while horizontally scrolling
+
+### Settings & Device Configuration
+
+- Settings dialog for viewing detailed device information
+- Async device info loading in the settings dialog
+- Partial device configuration changes from the settings dialog (sample rate, encoding, latency, AES67 mode `Enabled` / `Disabled`)
+
+### Other TUI Functions
+
+- Safe Mode guard for write actions
+- Manage AES67 Flows screen with clear mockup/upstream-limit hints
+
+## Dependencies
+
+### Required (all setups)
+
+- Git
+- Python 3.9+
+
+### Recommended toolchain (`uv` path)
+
+- `pipx`
+- `uv`
+
+Install on Debian/Ubuntu/Linux Mint:
 
 ```bash
-uv tool install netaudio
+sudo apt install pipx
+pipx ensurepath
+pipx install uv
 ```
 
-Or with pip/pipx:
+Note: global `pip install uv` can be blocked on Debian/Ubuntu/Linux Mint (PEP 668 "externally managed environment"). `pipx` avoids that issue.
+
+### Alternative toolchain (without `uv`)
+
+- `python3-venv`
+- `pip`
+
+Install on Debian/Ubuntu/Linux Mint:
 
 ```bash
-pip install netaudio
+sudo apt install python3-venv
 ```
 
-To install from a clone:
+## Setup and Start
+
+### 1) Clone repository
+
+```bash
+git clone <repo-url>
+cd network-audio-controller-tui
+```
+
+### 2) Install dependencies and run
+
+Option A: using `uv` (recommended)
 
 ```bash
 uv sync
-uv run netaudio
+uv run netaudio-tui
 ```
 
-#### Arch Linux
+Optional CLI check:
 
-To install from AUR, build the package with
-[aur/python-netaudio](https://aur.archlinux.org/packages/python-netaudio).
+```bash
+uv run netaudio --help
+```
 
-### Usage
+Option B: without `uv` (classic `venv` + `pip`)
 
-Run `netaudio` if installed globally, or `uv run netaudio` from a clone.
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e packages/netaudio-lib
+pip install -e packages/netaudio
+netaudio-tui
+```
 
-Run tests:
+Optional CLI check:
+
+```bash
+netaudio --help
+```
+
+## Tests / Lint
 
 ```bash
 uv run pytest
-```
-
-Lint and format:
-
-```bash
 uv run ruff check .
 uv run ruff format .
 ```
 
-### Documentation
+## Nodes
 
-- [Examples](https://github.com/chris-ritsen/network-audio-controller/wiki/Examples)
-- [Technical details](https://github.com/chris-ritsen/network-audio-controller/wiki/Technical-details)
-- [Testing](https://github.com/chris-ritsen/network-audio-controller/wiki/Testing)
+The app was made with heavy usage of various LLMs.

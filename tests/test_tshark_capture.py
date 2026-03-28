@@ -2,7 +2,7 @@ import struct
 
 import pytest
 
-from netaudio.dante.tshark_capture import TsharkCapture, _build_bpf_filter
+from netaudio_lib.dante.tshark_capture import TsharkCapture, _build_bpf_filter
 
 
 class TestBpfFilter:
@@ -10,9 +10,9 @@ class TestBpfFilter:
         bpf = _build_bpf_filter()
         assert bpf == "udp"
 
-    def test_filter_with_tcp(self):
-        bpf = _build_bpf_filter(include_tcp=True)
-        assert bpf == "udp or tcp"
+    def test_filter_with_device_ips(self):
+        bpf = _build_bpf_filter(device_ips=["192.168.1.10", "192.168.1.20"])
+        assert bpf == "udp"
 
 
 class TestParseLine:

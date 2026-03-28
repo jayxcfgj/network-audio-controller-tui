@@ -7,7 +7,7 @@ from typing import Optional
 
 import typer
 
-from netaudio.common.app_config import settings
+from netaudio_lib.common.app_config import settings
 
 from netaudio import __version__
 
@@ -94,7 +94,7 @@ def _parse_sort(value: str) -> tuple[str, bool]:
 
 def _load_icons_from_config() -> bool:
     try:
-        from netaudio.common.config_loader import default_config_path
+        from netaudio_lib.common.config_loader import default_config_path
 
         try:
             import tomllib
@@ -119,7 +119,7 @@ def _load_icons_from_config() -> bool:
 
 app = typer.Typer(
     name="netaudio",
-    help="CLI for managing network audio devices.",
+    help="CLI for controlling Audinate Dante network audio devices.",
     context_settings={"help_option_names": ["--help"]},
     invoke_without_command=True,
 )
@@ -137,7 +137,6 @@ def _global_options(
     sort: str = typer.Option("mac", "--sort", help="Sort field[:asc|desc]. Fields: mac, name, ip, model, server-name.", envvar="NETAUDIO_SORT"),
     no_color: bool = typer.Option(False, "--no-color", help="Disable colored output.", envvar="NETAUDIO_NO_COLOR"),
     timeout: float = typer.Option(5.0, "--timeout", help="mDNS discovery timeout in seconds.", envvar="NETAUDIO_TIMEOUT"),
-    lock_state_timeout: float = typer.Option(4.0, "--lock-state-timeout", help="Lock state collection timeout in seconds.", envvar="NETAUDIO_LOCK_STATE_TIMEOUT"),
     interface: Optional[str] = typer.Option(None, "--interface", help="Network interface to use.", envvar="NETAUDIO_INTERFACE"),
     log_level: str = typer.Option("WARNING", "--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR).", envvar="NETAUDIO_LOG_LEVEL"),
     debug: bool = typer.Option(False, "--debug", help="Shorthand for --log-level DEBUG.", envvar="NETAUDIO_DEBUG"),
@@ -163,7 +162,6 @@ def _global_options(
         icons = _load_icons_from_config()
     state.icons = icons
 
-    settings.lock_state_timeout = lock_state_timeout
     settings.mdns_timeout = timeout
     settings.no_color = no_color
 
@@ -189,7 +187,9 @@ def _global_options(
         device_list()
 
 
-from netaudio.commands import capture, channel, config, device, diagnose, fact, firmware, key, provenance, server, shure, subscription, virtual
+from netaudio.commands import bug, capture, channel, config, device, diagnose, fact, key, provenance, server, subscription
+
+app.add_typer(bug.app, name="bug")
 app.add_typer(device.app, name="device")
 app.add_typer(channel.app, name="channel")
 app.add_typer(subscription.app, name="subscription")
@@ -201,9 +201,6 @@ app.add_typer(provenance.app, name="provenance")
 app.add_typer(fact.app, name="fact")
 app.add_typer(key.app, name="key")
 app.add_typer(diagnose.app, name="diagnose")
-app.add_typer(firmware.app, name="firmware", help="Analyze Dante firmware (.dnt) files.")
-app.add_typer(shure.app, name="shure")
-app.add_typer(virtual.app, name="virtual")
 
 
 def main():

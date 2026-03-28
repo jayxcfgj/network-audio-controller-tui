@@ -3,7 +3,8 @@
 .sw*
 dist/
 __pycache__
+venv/
+.venv/
 debug.log
 .hypothesis/
 tests/fixtures/provenance/.local/
-packages/netaudio/man/
