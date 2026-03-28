@@ -73,7 +73,7 @@ sudo apt install python3-venv
 ### 1) Clone repository
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/jayxcfgj/network-audio-controller-tui.git
 cd network-audio-controller-tui
 ```
 
